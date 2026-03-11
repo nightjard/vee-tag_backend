@@ -18,16 +18,46 @@ from app.config import settings
 
 router = APIRouter(prefix="/qr", tags=["QR Medcard"])
 
-
-def generate_user_token(user_id: int) -> str:
+def generate_permanent_token(user_id: int) -> str:
     """
-    Генерация уникального постоянного токена для пользователя
-    Токен = user_id + случайная строка для безопасности
+    Генерация ПОСТОЯННОГО токена для пользователя
+    Формат: user_id (8 цифр) + случайная строка (16 символов)
+    Пример: 00000042-X3j7kP9mQ2nL5tRv
     """
-    # Создаём случайный суффикс для защиты от подбора
     random_suffix = secrets.token_urlsafe(16)
-    # Токен = user_id закодированный + случайная строка
     return f"{user_id:08d}-{random_suffix}"
+
+async def get_or_create_qr_token(user_id: int, db: AsyncSession) -> str:
+    """
+    Получить существующий токен или создать новый
+    Токен сохраняется в поле qr_token таблицы users
+    """
+    # Получаем пользователя
+    result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Если токен уже существует - возвращаем его
+    if user.qr_token:
+        print(f"✅ Using existing QR token for user {user_id}: {user.qr_token[:20]}...")
+        return user.qr_token
+    
+    # Создаём новый токен
+    new_token = generate_permanent_token(user_id)
+    user.qr_token = new_token
+    
+    await db.commit()
+    await db.refresh(user)
+    
+    print(f"✅ Created new QR token for user {user_id}: {new_token[:20]}...")
+    return new_token
 
 
 def extract_user_id_from_token(token: str) -> int | None:
@@ -67,7 +97,7 @@ async def get_medcard_qr_info(
         )
     
     # Генерируем токен
-    token = generate_user_token(user_id)
+    token = await get_or_create_qr_token(user_id, db)
     base_url = "http://localhost:8000"
     medcard_url = f"{base_url}/api/v1/qr/view/{token}"
     
@@ -312,7 +342,7 @@ async def view_medcard_by_qr(
         <div class="container">
             <div class="header">
                 <h1>🏥 МЕДИЦИНСКАЯ КАРТА</h1>
-                <p>Pozily - Платформа помощи пожилым</p>
+                <p>Vee-tag - Платформа помощи пожилым</p>
             </div>
             
             <div class="content">
@@ -470,3 +500,54 @@ async def get_user_by_phone(
             "role": user.role
         }
     )
+
+@router.post("/verify/{user_id}")
+async def verify_volunteer(
+    user_id: int,
+    verified: bool = True,
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Верификация волонтёра"""
+
+    if x_api_key:
+        if x_api_key != settings.ADMIN_API_KEY:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid API key"
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="X-API-Key header required"
+        )
+    
+    result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    volunteer = result.scalar_one_or_none()
+    
+    if not volunteer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if volunteer.role != 'volunteer':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only volunteers can be verified"
+        )
+    
+    # Просто обновляем is_verified, БЕЗ updated_at
+    volunteer.is_verified = verified
+    
+    await db.commit()
+    await db.refresh(volunteer)
+    
+    return {
+        "status": "ok",
+        "message": f"Volunteer {'verified' if verified else 'unverified'}",
+        "volunteer_id": volunteer.id,
+        "is_verified": volunteer.is_verified
+    }

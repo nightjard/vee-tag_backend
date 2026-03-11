@@ -20,8 +20,11 @@ class User(Base):
     phone = Column(String(32), unique=True, nullable=False, index=True)
     email = Column(String(256), nullable=True)
     role = Column(String(32), nullable=False)
-    password_hash = Column(String(256), nullable=True)  # для OTP или password
+    password_hash = Column(String(256), nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    qr_token = Column(String(255), unique=True, nullable=True, index=True)
+    photo_url = Column(Text, nullable=True)
+    is_verified = Column(Boolean, default=False, nullable=False)
     
     __table_args__ = (
         CheckConstraint("role IN ('relative', 'operator', 'volunteer', 'admin')", name='check_user_role'),
@@ -117,6 +120,8 @@ class Volunteer(Base):
     region = Column(String(128), nullable=True)
     available = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    user = relationship("User", backref="volunteer_profile")
 
 
 class Booking(Base):

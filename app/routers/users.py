@@ -1,3 +1,5 @@
+﻿import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -265,3 +267,23 @@ async def get_user(
             "created_at": user.created_at.isoformat() if user.created_at else None
         }
     )
+
+@router.put("/me/photo")
+async def update_user_photo(
+    photo_url: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Обновление фотографии пользователя"""
+    
+    current_user.photo_url = photo_url
+    current_user.updated_at = datetime.utcnow()
+    
+    await db.commit()
+    await db.refresh(current_user)
+    
+    return {
+        "status": "ok",
+        "message": "Photo updated",
+        "photo_url": current_user.photo_url
+    }
