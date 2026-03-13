@@ -43,6 +43,8 @@ async def get_current_user_info(
             "phone": current_user.phone,
             "email": current_user.email if current_user.email else "",
             "role": current_user.role,
+            "photo_url": current_user.photo_url if current_user.photo_url else "",
+            "is_verified": current_user.is_verified,
             "created_at": current_user.created_at.isoformat() if current_user.created_at else None
         }
     )

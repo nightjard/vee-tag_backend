@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.database import get_db
 from app.models import Device, User
+from datetime import datetime
 from app.schemas import (
     DeviceRegisterRequest, DeviceRegisterResponse,
     TelemetryRequest, BaseResponse
@@ -123,3 +124,56 @@ async def get_device(
             "user_id": device.user_id
         }
     )
+
+@router.post("/{device_id}/assign-user", response_model=BaseResponse)
+async def assign_user_to_device(
+    device_id: str,
+    user_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Привязка устройства к пользователю"""
+    result = await db.execute(select(Device).where(Device.device_id == device_id))
+    device = result.scalar_one_or_none()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    device.user_id = user_id
+    db.add(device)
+    await db.commit()
+    await db.refresh(device)
+    
+    return BaseResponse(
+        status="ok",
+        code=200,
+        data={"device_id": device.device_id, "user_id": device.user_id}
+    )
+
+@router.post("/webhook/traccar", response_model=BaseResponse)
+async def traccar_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Получаем JSON от Traccar и записываем в устройство.
+    Поддерживаем только часть данных.
+    """
+    payload = await request.json()
+    
+    for item in payload:
+        device_id = str(item.get("deviceId"))
+        attributes = item.get("attributes", {})
+        
+        result = await db.execute(select(Device).where(Device.device_id == device_id))
+        device = result.scalar_one_or_none()
+        if not device:
+            continue  # можно логировать как неизвестное устройство
+        
+        device.last_seen = datetime.fromisoformat(item.get("serverTime"))
+        device.battery_percent = attributes.get("batteryLevel")
+        device.latitude = item.get("latitude")
+        device.longitude = item.get("longitude")
+        device.speed = item.get("speed")
+        device.course = item.get("course")
+        
+        db.add(device)
+    
+    await db.commit()
+    
+    return BaseResponse(status="ok", code=200, data={"processed": len(payload)})

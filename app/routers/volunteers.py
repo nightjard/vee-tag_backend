@@ -65,45 +65,55 @@ async def list_volunteers(
     )
 
 
-@router.get("/{volunteer_id}", response_model=BaseResponse)
-async def get_volunteer(
-    volunteer_id: int,
+@router.get("", response_model=BaseResponse)
+async def get_volunteers(
+    limit: int = 50,
     db: AsyncSession = Depends(get_db)
 ):
-    """Получение информации о волонтёре"""
-    result = await db.execute(
-        select(Volunteer).where(Volunteer.id == volunteer_id)
-    )
-    volunteer = result.scalar_one_or_none()
+    """Получение списка волонтёров"""
     
-    if not volunteer:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Volunteer not found"
+    try:
+        result = await db.execute(
+            select(Volunteer, User)
+            .join(User, Volunteer.user_id == User.id)
+            .limit(limit)
+        )
+        rows = result.all()
+        
+        volunteers_data = []
+        for volunteer, user in rows:
+            volunteers_data.append({
+                "id": user.id,
+                "volunteer_id": volunteer.id,
+                "user_id": volunteer.user_id,
+                "name": user.name,
+                "phone": user.phone,
+                "email": user.email or "",
+                "photo_url": user.photo_url or "",
+                "is_verified": user.is_verified,
+                "rating": float(volunteer.rating) if volunteer.rating else 0.0,
+                "services": volunteer.services or [],
+                "region": volunteer.region or "",
+                "available": volunteer.available
+            })
+        
+        return BaseResponse(
+            status="ok",
+            code=200,
+            data=volunteers_data
         )
     
-    # Получаем пользователя
-    user_result = await db.execute(
-        select(User).where(User.id == volunteer.user_id)
-    )
-    user = user_result.scalar_one_or_none()
-    
-    return BaseResponse(
-        status="ok",
-        code=200,
-        data={
-            "id": volunteer.id,
-            "user_id": volunteer.user_id,
-            "name": user.name if user else "Unknown",
-            "phone": user.phone if user else None,
-            "email": user.email if user else None,
-            "rating": volunteer.rating / 10.0,
-            "services": volunteer.services if volunteer.services else [],
-            "region": volunteer.region,
-            "available": volunteer.available,
-            "created_at": volunteer.created_at
-        }
-    )
+    except Exception as e:
+        print(f"❌ Error loading volunteers: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        return BaseResponse(
+            status="error",
+            code=500,
+            data=[],
+            error={"message": str(e)}
+        )
 
 
 @router.post("/register", response_model=BaseResponse)

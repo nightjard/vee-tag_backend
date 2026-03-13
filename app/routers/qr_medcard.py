@@ -98,7 +98,7 @@ async def get_medcard_qr_info(
     
     # Генерируем токен
     token = await get_or_create_qr_token(user_id, db)
-    base_url = "http://localhost:8000"
+    base_url = "http://155.212.143.10:8000"
     medcard_url = f"{base_url}/api/v1/qr/view/{token}"
     
     return BaseResponse(
@@ -127,7 +127,7 @@ async def get_qr_image(token: str):
         )
     
     # Генерируем QR код с URL медкарты
-    base_url = "http://localhost:8000"
+    base_url = "http://155.212.143.10:8000"
     medcard_url = f"{base_url}/api/v1/qr/view/{token}"
     
     qr = qrcode.QRCode(

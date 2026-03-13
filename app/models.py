@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Boolean, SmallInteger, JSON, DateTime,
-    ForeignKey, TIMESTAMP, Text, LargeBinary, CheckConstraint, Index
+    ForeignKey, TIMESTAMP, Text, LargeBinary, CheckConstraint, Index, Float
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship, declarative_base
@@ -48,14 +48,19 @@ class Device(Base):
     imei = Column(String(64), nullable=True)
     firmware_version = Column(String(32), nullable=True)
     device_secret = Column(LargeBinary, nullable=True)
+    
+    # Traccar fields
     last_seen = Column(TIMESTAMP(timezone=True), nullable=True)
     battery_percent = Column(SmallInteger, nullable=True)
     signal_type = Column(String(32), nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    speed = Column(Float, nullable=True)
+    course = Column(Float, nullable=True)
     
     # Relationships
     user = relationship("User", back_populates="devices")
     sos_events = relationship("SOSEvent", back_populates="device")
-
 
 class MedCard(Base):
     __tablename__ = "med_cards"
